@@ -12,7 +12,6 @@ class FeedForwardNeuralNetwork:
         self.loss_function=loss_function
         assert self.layer_count==len(self.activation_functions)+1
         self.weights=[]
-        #   Randomly generating weights and biases
         for i in range(1,self.layer_count):
           self.weights.append(np.random.randn(self.layers[i],self.layers[i-1]))
         self.biases = [np.zeros((x, 1)) for x in self.layers[1:]]
@@ -59,9 +58,15 @@ class FeedForwardNeuralNetwork:
         grad_biases[layer]=(1/samples) * np.sum(grad_layers[layer],axis=1,keepdims=True)
       return (grad_layers,grad_weights,grad_biases)
     
-    def train(self,X,Y,eta=0.01,batch_size=30,max_epochs=100):
+    def train(self,X,Y,eta=0.01,batch_size=30,max_epochs=100,optimizer='gd',momentum=0.8):
       training_loss=[]
- 
+      t=0
+      v_b=0
+      v_w=0
+      m_b=0
+      m_w=0
+      prev_grad_weights=np.multiply(self.weights,0)
+      prev_grad_biases=np.multiply(self.biases,0)
       for epoch in range (max_epochs):
         step=0
         batch_loss=0
@@ -70,11 +75,62 @@ class FeedForwardNeuralNetwork:
           batch_Y=Y[num:num+batch_size]
           predictions=self.forwardPass(batch_X)
           (grad_layers, grad_weights,grad_biases) = self.backwardPropogate(batch_X,batch_Y, predictions)
-          update_w = np.multiply(eta,grad_weights)
-          update_b = np.multiply(eta,grad_biases)
-          self.weights = self.weights - update_w
-          self.biases = self.biases - update_b
-          
+          if optimizer=='gd':
+            update_w = np.multiply(eta,grad_weights)
+            update_b = np.multiply(eta,grad_biases)
+            
+          if optimizer=='momentum':
+            update_w = np.multiply(eta,grad_weights)+np.multiply(momentum,prev_grad_weights)
+            update_b = np.multiply(eta,grad_biases)+np.multiply(momentum,prev_grad_biases)
+            prev_grad_weights=update_w
+            prev_grad_biases=update_b
+          if optimizer=='adagrad':
+            e=1e-8
+            v_w=v_w+np.power(grad_weights,2)
+            v_b=v_b+np.power(grad_biases,2)
+            mul_w=1/np.power(v_w+e,1/2)
+            mul_b=1/np.power(v_b+e,1/2)
+            update_w=np.multiply(grad_weights,mul_w)*eta
+            update_b=np.multiply(grad_biases,mul_b)*eta
+            
+          if optimizer=='rms_prop':
+            e=1e-8
+            beta=0.95
+            v_w=v_w*beta+(1-beta)*np.power(grad_weights,2)
+            v_b=v_b*beta+(1-beta)*np.power(grad_biases,2)
+            mul_w=1/np.power(v_w+e,1/2)
+            mul_b=1/np.power(v_b+e,1/2)
+            update_w=np.multiply(grad_weights,mul_w)*eta
+            update_b=np.multiply(grad_biases,mul_b)*eta
+          if optimizer=='adam':
+            e=1e-8
+            beta1=0.95
+            beta2=0.99
+            
+            m_w=np.multiply(m_w,beta1)+np.multiply((1-beta1),grad_weights)
+            m_b=np.multiply(m_b,beta1)+np.multiply((1-beta1),grad_biases)
+
+            v_w=v_w*beta2+(1-beta2)*np.power(grad_weights,2)
+            v_b=v_b*beta2+(1-beta2)*np.power(grad_biases,2)
+
+            m_w=m_w/(1-np.power(beta1,t+1))
+            m_b=m_b/(1-np.power(beta1,t+1))
+
+            v_w=v_w/(1-np.power(beta2,t+1))
+            v_b=v_b/(1-np.power(beta2,t+1))
+
+            mul_w=1/np.power(v_w+e,1/2)
+            mul_b=1/np.power(v_b+e,1/2)
+
+            update_w=np.multiply(mul_w,m_w)*eta
+            update_b=np.multiply(mul_b,m_b)*eta
+
+
+
+
+          self.weights=self.weights-update_w
+          self.biases=self.biases-update_b
+          t=t+1
           if self.loss_function == 'ce':           
               batch_loss += log_loss(batch_Y.T,predictions)
         training_loss.append(batch_loss)
@@ -162,5 +218,5 @@ for i in range(test_labels.shape[0]):
 
 #   The first 28*28 layer is a input layer
 model=FeedForwardNeuralNetwork([28*28,64,128,10],['relu','relu','stable_softmax'])
-model.train(np.array(X),np.array(Y),max_epochs=20)
+model.train(np.array(X),np.array(Y),max_epochs=20,optimizer='adam',momentum=0.2)
 
